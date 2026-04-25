@@ -107,11 +107,10 @@ def agent_loop(prompt: str, max_steps: int = 5):
 
         model_content = response.candidates[0].content
         contents.append(model_content)
-        
+        # print(model_content)
         # print(contents)
 
         function_calls = response.function_calls
-        
         if not function_calls:
             return response.text or ""
 
@@ -139,7 +138,7 @@ def agent_loop(prompt: str, max_steps: int = 5):
         
     
 def main():
-    ans = agent_loop(prompt="what is the result of expression: 4 + 99 / 5", max_steps=2)
+    ans = agent_loop(prompt="what is the result of expression: 4 + 99 / 5", max_steps=2 )
     print(ans)
     
 if __name__ == "__main__":
