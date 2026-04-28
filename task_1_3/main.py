@@ -29,9 +29,7 @@ def getClient():
     client = genai.Client(api_key=API_KEY)
     return client 
 
-def toolCall(
-    args_schema: type[BaseModel],
-):
+def toolCall(args_schema: type[BaseModel]):
     def decorator(func: Callable[..., dict]):
         name = func.__name__
         description = func.__doc__ or "No description provided."
