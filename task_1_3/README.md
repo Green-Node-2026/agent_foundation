@@ -87,6 +87,22 @@ GEMINI_MODEL=gemini-2.5-flash
 python task_1_3\main.py
 ```
 
+## Tests
+
+Run the unit tests with:
+
+```powershell
+python tests\run_tests.py
+```
+
+The current suite covers:
+
+- happy-path arithmetic
+- parentheses and whitespace handling
+- invalid input and malformed numbers
+- division by zero
+- the `calculate()` tool wrapper result and error payloads
+
 ## Notes
 
 - A tool call usually needs at least 2 model turns:

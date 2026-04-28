@@ -1,3 +1,4 @@
 .env
 *.env
 task_1_3/.env
+task_1_3/AGENTS.md
