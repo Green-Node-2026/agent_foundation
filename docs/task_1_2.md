@@ -196,3 +196,10 @@ Luồng cơ bản của OpenAI function calling là:
 ```
 
 ## Demo cách chọn tools của LLMs
+### Prompt config
+1. Prompt mà model chọn 1 tool: What is the weather in Ho Chi Minh City today?
+![Alt text](tool_call.png)
+
+
+2. Prompt mà model chọn nhiều tools để hoàn thành task: For my trip planning, do all three tasks: get the current weather in Ho Chi Minh City, get general climate information for Bangkok, and search the web for recent travel advisories for Thailand.
+![Alt text](tools_call.png)
