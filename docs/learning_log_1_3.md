@@ -1,0 +1,8 @@
+- Qua Task 1.3, em đã setup được project Python riêng cho agent đầu tiên, gồm `venv`, `.env`, API key và cấu trúc file rõ ràng.
+- Em đã implement một tool duy nhất là `calculate(expression)` để xử lý các phép tính cơ bản thay vì để LLM tự tính.
+- Phần calculator được viết bằng lexer/parser đơn giản, tránh dùng `eval`, nên an toàn và dễ kiểm soát lỗi hơn.
+- Em hiểu rõ hơn vòng lặp agent cơ bản: user prompt -> model chọn tool -> app chạy tool -> gửi tool result lại cho model -> model trả final answer.
+- Việc dùng Pydantic để mô tả input schema giúp Gemini hiểu tool cần tham số gì và khi nào nên gọi tool.
+- Em đã xử lý các edge case như không cần gọi tool, lỗi biểu thức sai, chia cho 0 và trường hợp agent vượt quá `max_steps`.
+- Qua task này, em thấy một tool call thường cần ít nhất 2 lượt model: lượt đầu để yêu cầu gọi tool, lượt sau để tổng hợp câu trả lời cuối.
+- Em cũng viết README, test cho calculator và demo script để người khác có thể chạy lại agent dễ dàng.

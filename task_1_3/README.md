@@ -87,6 +87,25 @@ GEMINI_MODEL=gemini-2.5-flash
 python task_1_3\main.py
 ```
 
+Run the browser demo:
+
+```powershell
+cd task_1_3
+python web\server.py
+```
+
+In another terminal:
+
+```powershell
+cd task_1_3\web
+npm install
+npm run dev
+```
+
+Then open `http://127.0.0.1:5173`. The React app sends a prompt to
+Gemini through the local API, shows the final answer, and displays the
+calculator tool call trace.
+
 ## Tests
 
 Run the unit tests with:
