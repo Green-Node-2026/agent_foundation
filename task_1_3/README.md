@@ -49,7 +49,8 @@ This is the basic pattern:
 
 ## Files
 
-- [main.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/main.py): Gemini client setup, tool registration, agent loop
+- [main.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/main.py): tool registration and agent loop
+- [llm_wrapper.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/llm_wrapper.py): LLM provider adapter, currently implemented for Gemini
 - [calculator.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/calculator.py): safe calculator implementation using a lexer and parser
 - [.env.example](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/.env.example): example environment variables
 - [requirements.txt](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/requirements.txt): Python dependencies
@@ -77,8 +78,20 @@ pip install -r task_1_3\requirements.txt
 Create `task_1_3/.env`:
 
 ```env
+LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
+```
+
+`LLM_PROVIDER` is routed through `LLMWrapper`. The current implementation
+supports `gemini` and `openai`.
+
+To use OpenAI:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4.1-mini
 ```
 
 ## Run

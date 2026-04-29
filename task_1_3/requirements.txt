@@ -1,2 +1,5 @@
 google-genai
+openai
 python-dotenv
+flask
+flask-cors

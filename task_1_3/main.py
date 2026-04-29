@@ -1,16 +1,11 @@
-import os
 from pathlib import Path
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from google import genai
 from typing import Callable
 from calculator import calculator
-from google.genai import types
+from llm_wrapper import LLMWrapper
 
 load_dotenv(Path(__file__).with_name(".env"))
-
-API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 class CalculatorInput(BaseModel):
     # metadata for LLM 
@@ -20,14 +15,7 @@ class CalculatorInput(BaseModel):
     )
 
 TOOL_REGISTRY: dict[str, Callable[..., dict]] = {}
-TOOL_DECLARATIONS: list[types.FunctionDeclaration] = []
-
-def getClient():
-    if not API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in task_1_3/.env")
-
-    client = genai.Client(api_key=API_KEY)
-    return client 
+TOOL_DEFINITIONS: list[dict] = []
 
 def toolCall(args_schema: type[BaseModel]):
     def decorator(func: Callable[..., dict]):
@@ -36,13 +24,13 @@ def toolCall(args_schema: type[BaseModel]):
         
         TOOL_REGISTRY[name] = func
 
-        declaration = types.FunctionDeclaration(
-            name=name,
-            description=description,
-            parameters_json_schema=args_schema.model_json_schema(),
+        TOOL_DEFINITIONS.append(
+            {
+                "name": name,
+                "description": description,
+                "parameters_json_schema": args_schema.model_json_schema(),
+            }
         )
-
-        TOOL_DECLARATIONS.append(declaration)
 
         return func
 
@@ -72,73 +60,56 @@ def execute_tool(functionCall):
     
 
 def agent_loop(prompt: str, max_steps: int = 5):
-    client = getClient()
-    
-    tools = [
-        types.Tool(function_declarations=TOOL_DECLARATIONS)
-    ] 
-    
-    config = types.GenerateContentConfig(
-        tools=tools,
-        tool_config=types.ToolConfig(
-            function_calling_config=types.FunctionCallingConfig(
-                mode="AUTO"
-            )
-        ),
-    )
+    llm = LLMWrapper()
 
     contents = [
-        types.Content(
-            role="user",
-            parts=[
-                types.Part.from_text(text=prompt),
-            ],
-        )
+        llm.create_user_content(prompt)
     ]
-    # print(contents)
+    
     for _ in range(max_steps):
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = llm.generate(
             contents=contents,
-            config=config,
+            tool_definitions=TOOL_DEFINITIONS,
         )
 
-        model_content = response.candidates[0].content
-        contents.append(model_content)
-        # print(model_content)
-        # print(contents)
+        contents.append(response.content)
 
         function_calls = response.function_calls
         if not function_calls:
-            return response.text or ""
+            return contents
 
         tool_response_parts = []
 
-        # implement tool-chain
         for function_call in function_calls:
             tool_result = execute_tool(function_call)
 
-            tool_response_part = types.Part.from_function_response(
-                name=function_call.name,
+            tool_response_part = llm.create_tool_response_part(
+                function_call=function_call,
                 response=tool_result,
             )
 
             tool_response_parts.append(tool_response_part)
 
         contents.append(
-            types.Content(
-                role="tool",
-                parts=tool_response_parts,
-            )
+            llm.create_tool_response_content(tool_response_parts)
         )
 
-    return "The agent reached the maximum number of tool-calling steps."
+    return contents
         
     
 def main():
-    prompt = input()
-    ans = agent_loop(prompt=prompt, max_steps=2 )
-    print(ans)
+    prompt = input("Enter prompt: ")
+    history = agent_loop(prompt=prompt, max_steps=2 )
+    for content in history:
+        print(f"[{content.role}]")
+        for part in content.parts:
+            if part.text:
+                print(f"Text: {part.text}")
+            if part.function_call:
+                print(f"Tool Call: {part.function_call.name}({part.function_call.args})")
+            if part.function_response:
+                print(f"Tool Response: {part.function_response.response}")
+        print("-" * 20)
     
 if __name__ == "__main__":
     main()
