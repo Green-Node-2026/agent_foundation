@@ -1,0 +1,7 @@
+- Qua task 1.2, em đã hiểu rõ hơn về khái niệm tool use / function calling trong LLM.
+- Tool use của Anthropic và Functional calling của OpenAI tương đối giống nhau về cơ chế Agent Loop chỉ khác biệt ở các cơ chế wrapper ở bên ngoài.
+- Hiểu được vai trò của JSON schema và tool description trong việc giúp model chọn đúng tool và điền đúng loại tham số.
+- Em cũng thấy rằng prompt, tool description tool và schema đều ảnh hưởng trực tiếp đến quyết định gọi tool của LLM.
+- Ngoài ra, em đã hiểu được luồng hoạt động cơ bản từ gửi tools vào request, model trả về tool call, app chạy tool và trả kết quả lại cho model.
+- Một điểm quan trọng nữa là chi phí tool calling không chỉ nằm ở output mà còn nằm ở input tokens, bao gồm cả phần khai báo tools.
+- Chi tiết hơn, anh có thể đọc ở: [Task 1.2](https://github.com/Green-Node-2026/agent_foundation/blob/main/docs/task_1_2.md)
