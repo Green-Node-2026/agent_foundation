@@ -1,12 +1,9 @@
 .env
 *.env
-task_1_2/.env
-task_1_3/.env
-task_1_3/AGENTS.md
-.agents
-AGENTS.md
+*.agents
 __pycache__/
 *.pyc
 *.pyo
 PRODUCT.md
 DESIGN.md
+AGENTS.md
