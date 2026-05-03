@@ -1,47 +1,99 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Scope
 
-This repository contains a minimal single-tool agent for Task 1.3. The main entry point is `main.py`, which configures the Gemini client, registers the `calculate` tool, and runs the tool-calling loop. Calculator parsing and evaluation live in `calculator.py`; keep expression parsing concerns there rather than in the agent loop. Runtime configuration is loaded from `.env`, with expected variables documented by `.env.example`. Python dependencies are listed in `requirements.txt`. There is currently no committed test directory.
+This folder contains the Task 1.3 calculator agent. Keep changes focused on the local agent, its browser demo, and its tests. Do not introduce a framework agent unless the task explicitly asks for that comparison.
 
-## Build, Test, and Development Commands
+## Project Structure
 
-Create and activate a virtual environment before installing dependencies:
+- `backend/agent.py`: agent class with tool-calling loop and history reconstruction.
+- `backend/llm_wrapper.py`: provider-specific LLM request/response adapter.
+- `backend/server.py`: FastAPI server for the browser demo.
+- `backend/tools/calculator.py`: arithmetic lexer/parser and evaluator.
+- `backend/tools/registry.py`: centralized tool registration.
+- `backend/.env.example`: placeholder runtime configuration.
+- `frontend/src/`: Minimalist React/Vite chat UI.
+- `unittest/run_tests.py`: colorized local test runner.
+- `unittest/test_calculator.py`: calculator and tool-wrapper tests.
+- `unittest/test_history.py`: session history reconstruction tests.
+
+## Development Commands
+
+Install backend dependencies:
 
 ```powershell
+cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-Run the demo agent locally:
+Run the CLI agent:
 
 ```powershell
+cd backend
 python main.py
 ```
 
-Use a direct calculator smoke check when changing parser behavior:
+Run the browser API (FastAPI):
 
 ```powershell
-python -c "from calculator import calculator; print(calculator('4 + 99 / 5'))"
+cd backend
+python server.py
 ```
 
-## Coding Style & Naming Conventions
+Run the React frontend:
 
-Use Python with 4-space indentation and PEP 8-style formatting. Prefer `snake_case` for new functions and variables, `PascalCase` for classes such as `Lexer` and `Parser`, and uppercase names for module-level constants such as `API_KEY` and `MODEL`. Keep agent orchestration in `main.py`; keep arithmetic tokenization, parsing, and validation in `calculator.py`. Do not replace the parser with `eval`.
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Run tests:
+
+```powershell
+python unittest\run_tests.py
+```
+
+Use this smoke check when changing calculator behavior:
+
+```powershell
+python -c "import sys; sys.path.append('backend'); from tools.calculator import calculator; print(calculator('4 + 99 / 5'))"
+```
+
+## Coding Guidelines
+
+- Use Python with 4-space indentation and PEP 8-style naming.
+- Use `snake_case` for functions and variables, `PascalCase` for classes, and uppercase names for constants.
+- Keep orchestration in `backend/agent.py` and `backend/server.py`.
+- Keep model/provider conversion in `backend/llm_wrapper.py`.
+- Keep arithmetic tokenization, parsing, validation, and evaluation in `backend/tools/calculator.py`.
+- Do not replace the calculator parser with `eval`.
+- Keep frontend changes inside `frontend/` unless backend API shape changes.
+- Adhere to the "Minimalist Interface" design language: high contrast, sharp typography, no unnecessary borders.
 
 ## Testing Guidelines
 
-No formal testing framework or coverage threshold is currently committed. For new behavior, add focused `pytest` tests under `tests/`, using names like `tests/test_calculator.py` and `test_division_by_zero()`. Prioritize parser edge cases, invalid input, and tool response shape. If `pytest` is added, document it in `requirements.txt` or a separate development requirements file and run:
+Add focused tests when changing parser behavior, tool response shape, or agent-loop contracts. Prefer direct unit tests for calculator edge cases before adding LLM-dependent checks.
 
-```powershell
-python -m pytest
-```
+Important cases:
 
-## Commit & Pull Request Guidelines
+- valid arithmetic with operator precedence
+- parentheses and whitespace
+- invalid characters
+- malformed numbers
+- unmatched parentheses
+- division by zero
+- `calculate()` success and error payloads
 
-Recent history uses short messages with prefixes such as `feat:` and `chore:` plus occasional task labels, for example `feat: [task_1.3] agent with 1 tool`. Keep commits concise and action-oriented. Pull requests should describe the behavior change, list manual or automated checks run, mention `.env` or dependency changes, and link the relevant task or issue when available.
+## Configuration And Security
 
-## Security & Configuration Tips
+- Do not commit `.env`, API keys, `venv/`, `node_modules/`, `__pycache__/`, or `*.pyc`.
+- Keep `.env.example` free of secrets.
+- Treat model names and API keys as runtime configuration.
+- If a secret is accidentally tracked, remove it from Git with `git rm --cached` and rotate the key if it was pushed.
 
-Do not commit `.env`, API keys, or generated cache files. Keep `.env.example` free of secrets and update it when required configuration changes. Treat Gemini model names and API keys as runtime configuration, not hardcoded project policy.
+## Commit And PR Notes
+
+Recent commit messages use short prefixes such as `feat:` and `chore:`. Keep messages concise and action-oriented. PRs should mention behavior changes, commands run, dependency changes, and any required `.env` updates.

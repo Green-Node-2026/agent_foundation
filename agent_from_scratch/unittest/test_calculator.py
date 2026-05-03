@@ -1,7 +1,29 @@
 import unittest
+import sys
+from pathlib import Path
 
-from calculator import calculator
-from main import calculate
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
+
+from tools.calculator import calculator
+from agent import Agent
+from llm_wrapper import LLMWrapper
+
+
+def get_calculate_function():
+    """Helper to get the calculate function from registry"""
+    class MockClient:
+        def create_system_content(self, prompt): pass
+        def create_user_content(self, prompt): pass
+        def create_tool_response_content(self, parts): pass
+        def create_tool_response_part(self, call, response): pass
+        def generate(self, contents, tool_definitions): pass
+
+    agent = Agent(system_prompt="", client=MockClient())
+
+    from tools.registry import register_tools
+    register_tools(agent)
+
+    return agent.tool_registry["calculate"]
 
 
 class CalculatorTests(unittest.TestCase):
@@ -31,12 +53,14 @@ class CalculatorTests(unittest.TestCase):
             calculator("(2 + 3")
 
     def test_tool_wrapper_returns_result_payload(self):
+        calculate = get_calculate_function()
         self.assertEqual(
             calculate("4 + 99 / 5"),
             {"expression": "4 + 99 / 5", "result": "23.8"},
         )
 
     def test_tool_wrapper_returns_error_payload(self):
+        calculate = get_calculate_function()
         self.assertEqual(
             calculate("5 / 0"),
             {"expression": "5 / 0", "result": "Division by zero"},

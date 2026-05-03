@@ -1,20 +1,44 @@
-# Task 1.3 - Single-Tool Agent
+# Impeccable Multi-Agent System
 
-Task 1.3 builds a simple agent that can use exactly one tool: `calculate`.
+This project is a high-end, minimalist multi-agent system built from scratch. It features a robust tool-calling loop, persistent session history, and a premium "Impeccable" interface.
 
-The project does not use an agent framework. It calls the Gemini API directly, provides one tool schema, executes the tool locally, then sends the tool result back to the model so the model can produce the final answer.
+## Key Features
 
-## Goal
+- **Multi-Agent Orchestration:** Designed to coordinate and execute tasks using specialized tools.
+- **Session Persistence:** Full history reconstruction on the backend ensures context is preserved across reloads.
+- **Minimalist "Impeccable" UI:** A high-contrast, technically polished interface focused on content and clarity.
+- **Local Tool Execution:** A secure, locally implemented calculator tool (no `eval`).
+- **Provider Agnostic:** Supports both Gemini and OpenAI providers.
 
-- Understand the basic tool-calling loop
-- Build a minimal agent with one tool
-- Keep the implementation small and easy to inspect
+## Project Structure
+
+```text
+agent_from_scratch/
+  backend/
+    tools/
+      calculator.py       # safe arithmetic lexer/parser
+      registry.py         # centralized tool registration
+    llm_wrapper.py        # adapter for Gemini/OpenAI
+    agent.py              # agent class with history reconstruction
+    server.py             # FastAPI server for the multi-agent UI
+    requirements.txt      # Python dependencies
+    .env.example          # backend config template
+  frontend/
+    src/                  # Minimalist React chat UI
+    package.json          # Vite/React scripts
+  unittest/
+    run_tests.py          # colorized unittest runner
+    test_calculator.py    # calculator tests
+    test_history.py       # history reconstruction tests
+```
 
 ## Tool
 
 The only tool is:
 
-- `calculate(expression: str) -> dict`
+```python
+calculate(expression: str) -> dict
+```
 
 Example input:
 
@@ -33,49 +57,39 @@ Example output:
 }
 ```
 
+The calculator is implemented locally in `backend/tools/calculator.py`. It supports `+`, `-`, `*`, `/`, and parentheses. It intentionally avoids `eval`.
+
 ## How It Works
 
-The agent loop in [main.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/main.py) works like this:
+The agent loop in `backend/agent.py` follows this sequence:
 
-1. Send the user prompt and tool declarations to Gemini.
-2. If Gemini returns a function call, execute the local Python function.
-3. Convert the tool result into a `function_response`.
-4. Append that tool response back into the conversation history.
-5. Call Gemini again so it can generate the final natural-language answer.
+1. Convert the user prompt into LLM conversation content.
+2. Send the prompt plus tool schemas (from `tools/registry.py`) to the model.
+3. If the model returns a function call, execute the local Python tool.
+4. Convert the local result into a tool response.
+5. Append that response to the conversation history.
+6. Call the model again so it can produce the final natural-language answer.
 
-This is the basic pattern:
+Pattern:
 
-`user -> model -> tool call -> local tool execution -> tool response -> model -> final answer`
-
-## Files
-
-- [main.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/main.py): tool registration and agent loop
-- [llm_wrapper.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/llm_wrapper.py): LLM provider adapter, currently implemented for Gemini
-- [calculator.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/calculator.py): safe calculator implementation using a lexer and parser
-- [.env.example](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/.env.example): example environment variables
-- [requirements.txt](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/requirements.txt): Python dependencies
-
-## Why The Calculator Is Implemented Locally
-
-This task avoids `eval` and instead parses expressions manually in [calculator.py](/abs/c:/Tailieu/HK252/vng/agent_foundation/task_1_3/calculator.py). That keeps the tool safer and also makes the tool behavior easier to explain.
-
-Supported operators:
-
-- `+`
-- `-`
-- `*`
-- `/`
-- parentheses `()`
-
-## Setup
-
-Install dependencies:
-
-```powershell
-pip install -r task_1_3\requirements.txt
+```text
+user -> model -> tool call -> local tool execution -> tool response -> model -> final answer
 ```
 
-Create `task_1_3/.env`:
+## Backend Setup
+
+From the repository root:
+
+```powershell
+cd agent_from_scratch\backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Create `agent_from_scratch\backend\.env` from `.env.example`.
+
+Gemini example:
 
 ```env
 LLM_PROVIDER=gemini
@@ -83,51 +97,69 @@ GEMINI_API_KEY=your_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-`LLM_PROVIDER` is routed through `LLMWrapper`. The current implementation
-supports `gemini` and `openai`.
-
-To use OpenAI:
+OpenAI example:
 
 ```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MODEL=gpt-5.4-nano-2026-03-17
 ```
 
-## Run
+## Run The CLI Agent
+
+From `agent_from_scratch\backend`:
 
 ```powershell
-python task_1_3\main.py
+python main.py
 ```
 
-Run the browser demo:
+Enter a prompt such as:
 
-```powershell
-cd task_1_3
-python web\server.py
+```text
+Calculate (45 * 2) / 5
 ```
 
-In another terminal:
+## Run The Browser Demo
+
+Terminal 1, start the FastAPI server:
 
 ```powershell
-cd task_1_3\web
+cd agent_from_scratch\backend
+python server.py
+```
+
+Or with uvicorn directly:
+
+```powershell
+cd agent_from_scratch\backend
+uvicorn server:app --host 127.0.0.1 --port 5000 --reload
+```
+
+Terminal 2, start the Vite app:
+
+```powershell
+cd agent_from_scratch\frontend
 npm install
 npm run dev
 ```
 
-Then open `http://127.0.0.1:5173`. The React app sends a prompt to
-Gemini through the local API, shows the final answer, and displays the
-calculator tool call trace.
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The React app sends prompts to `http://127.0.0.1:5000/api/chat`, displays the final answer, and shows the calculator tool-call trace.
 
 ## Tests
 
-Run the unit tests with:
+From `agent_from_scratch`:
 
 ```powershell
-python tests\run_tests.py
+python unittest\run_tests.py
 ```
 
-The current suite covers:
+The current tests cover:
 
 - happy-path arithmetic
 - parentheses and whitespace handling
@@ -137,18 +169,7 @@ The current suite covers:
 
 ## Notes
 
-- A tool call usually needs at least 2 model turns:
-  - one turn for the model to request the tool
-  - one turn after the tool response to produce the final answer
-- If `max_steps=1`, the agent may call the tool correctly but still stop before generating the final natural-language answer.
-- Tool arguments are described with Pydantic and converted into JSON Schema for Gemini function declarations.
-
-## Learning Outcome
-
-After finishing this task, you should be comfortable with:
-
-- defining a tool schema
-- letting the model decide when to call a tool
-- executing the tool locally
-- returning tool results back to the model
-- understanding the minimal agent loop without a framework
+- Tool use usually needs at least two model turns: one for the model to request the tool, and one after the tool response to produce the final answer.
+- If `max_steps=1`, the agent may call the tool correctly but stop before generating the final natural-language answer.
+- Tool arguments are described with Pydantic and converted into JSON Schema for the LLM function declaration.
+- Keep `.env` files local. Only commit `.env.example` templates with placeholder values.

@@ -4,8 +4,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+BACKEND = ROOT / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
 
 
 class ColorTextTestResult(unittest.TextTestResult):
@@ -33,6 +34,6 @@ class ColorTextTestRunner(unittest.TextTestRunner):
 
 if __name__ == "__main__":
     loader = unittest.defaultTestLoader
-    suite = loader.discover("tests")
+    suite = loader.discover("unittest")
     runner = ColorTextTestRunner(verbosity=2)
     raise SystemExit(0 if runner.run(suite).wasSuccessful() else 1)

@@ -17,7 +17,7 @@ Note:
 - Hiểu JSON schema, tool description, cách LLM chọn tool
 - Note: Chi tiết cách tool được đưa vào llm, chi phí tool call
 
-**Task 1.3: [Build Agent đầu tiên - Single tool](task_1_3/README.md)**
+**Task 1.3: [Build Agent đầu tiên - Single tool](agent_from_scratch/README.md)**
 - Viết agent đơn giản với 1 tool (calculator hoặc weather API)
 - Không dùng framework, gọi API trực tiếp
 
