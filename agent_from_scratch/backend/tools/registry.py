@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, create_model
 from .calculator import calculator
+from .weather import get_weather_by_city
 
 
 def register_tools(agent):
@@ -20,15 +21,22 @@ def register_tools(agent):
         except Exception as e:
             return {"expression": expression, "result": str(e)}
 
-    # Tool 2: Example - Weather (commented out)
-    # WeatherInput = create_model(
-    #     'WeatherInput',
-    #     location=(str, Field(..., description="City name like 'Hanoi' or 'Ho Chi Minh'"))
-    # )
-    #
-    # @agent.toolCall(args_schema=WeatherInput)
-    # def get_weather(location: str) -> dict:
-    #     """Get current weather for a location."""
-    #     # Implementation here
-    #     pass
+    # Tool 2: Weather
+    WeatherInput = create_model(
+        'WeatherInput',
+        location=(str, Field(..., description="City name like 'Hanoi', 'Ho Chi Minh', 'Saigon', 'HCM'"))
+    )
+
+    @agent.toolCall(args_schema=WeatherInput)
+    def get_weather(location: str) -> dict:
+        """Get current weather for a location.
+
+        Common aliases:
+        - HCM, Ho Chi Minh, Saigon → Ho Chi Minh City
+        - HN, Hanoi → Hanoi
+        - DN, Danang → Da Nang
+
+        If the user gives an abbreviation or nickname, expand it to the full city name.
+        """
+        return get_weather_by_city(location)
     
