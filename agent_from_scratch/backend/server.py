@@ -89,37 +89,49 @@ class ChatRequest(BaseModel):
     history: list[dict] | None = None
 
 
+def parse_part(content):
+    if content.role == "system":
+        return None
+
+    parts = []
+    for part in content.parts:
+        p = {}
+        if part.text:
+            p["text"] = part.text
+        if part.function_call:
+            p["function_call"] = {
+                "name": part.function_call.name,
+                "args": part.function_call.args,
+                "call_id": part.function_call.call_id
+            }
+        if part.function_response:
+            p["function_response"] = {
+                "name": part.function_response.name,
+                "response": part.function_response.response,
+                "call_id": part.function_response.call_id
+            }
+        parts.append(p)
+    return parts
+
+
 def serialize_content(contents):
     serialized = []
     for content in contents:
-        # Skip system messages - don't send to frontend
-        if content.role == "system":
-            continue
-
-        parts = []
-        for part in content.parts:
-            p = {}
-            if part.text:
-                p["text"] = part.text
-            if part.function_call:
-                p["function_call"] = {
-                    "name": part.function_call.name,
-                    "args": part.function_call.args,
-                    "call_id": part.function_call.call_id
-                }
-            if part.function_response:
-                p["function_response"] = {
-                    "name": part.function_response.name,
-                    "response": part.function_response.response,
-                    "call_id": part.function_response.call_id
-                }
-            parts.append(p)
+        parts = parse_part(content)
         serialized.append({
             "role": content.role,
             "parts": parts
         })
     return serialized
 
+
+def serialize_single_content(content):
+    parts = parse_part(content)
+    return {
+        "role": content.role,
+        "parts": parts
+    }
+    
 
 @app.get("/api/tools")
 async def list_tools():
@@ -158,36 +170,6 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-def serialize_single_content(content):
-    """Serialize a single content object"""
-    if content.role == "system":
-        return None
-
-    parts = []
-    for part in content.parts:
-        p = {}
-        if part.text:
-            p["text"] = part.text
-        if part.function_call:
-            p["function_call"] = {
-                "name": part.function_call.name,
-                "args": part.function_call.args,
-                "call_id": part.function_call.call_id
-            }
-        if part.function_response:
-            p["function_response"] = {
-                "name": part.function_response.name,
-                "response": part.function_response.response,
-                "call_id": part.function_response.call_id
-            }
-        parts.append(p)
-
-    return {
-        "role": content.role,
-        "parts": parts
-    }
 
 
 @app.post("/api/chat")

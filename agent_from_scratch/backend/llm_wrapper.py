@@ -239,7 +239,7 @@ class OpenAIProvider(LLMProvider):
         # }
         # openai_role = role_map.get(content.role, content.role)
         openai_role = content.role
-        print(openai_role)
+        # print(openai_role)
 
         items = []
         for part in getattr(content, "parts", []):

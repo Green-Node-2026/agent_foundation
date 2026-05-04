@@ -10,17 +10,17 @@ const TraceBlock = ({ toolCall, toolResponse }) => {
     <div className="trace-block" onClick={() => setIsOpen(!isOpen)}>
       <div className="trace-header">
         <Cpu size={16} />
-        <span>Tool Call: {toolCall.name}</span>
+        <span>Action: {toolCall.name}</span>
         {isOpen ? <ChevronUp size={16} style={{ marginLeft: 'auto' }} /> : <ChevronDown size={16} style={{ marginLeft: 'auto' }} />}
       </div>
       {isOpen && (
         <div className="trace-content">
           <div className="trace-item">
-            <span className="trace-label">Input</span>
+            <span className="trace-label">Arguments</span>
             <pre className="trace-value">{JSON.stringify(toolCall.args, null, 2)}</pre>
           </div>
           <div className="trace-item">
-            <span className="trace-label">Output</span>
+            <span className="trace-label">Observation</span>
             <pre className="trace-value">{JSON.stringify(toolResponse.response, null, 2)}</pre>
           </div>
         </div>
@@ -106,9 +106,9 @@ function App() {
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'tool_call') {
-                setStatus(`Calling tool: ${data.name}...`);
+                setStatus(`Action: ${data.name}...`);
               } else if (data.type === 'tool_result') {
-                setStatus(`Processed: ${data.name}`);
+                setStatus(`Observation: ${data.name}`);
               } else if (data.type === 'model') {
                 setStatus('Finalizing...');
               } else if (data.type === 'done') {
@@ -185,7 +185,7 @@ function App() {
                   {toolCall && !textPart && isLastMessage && isLoading && (
                     <div className="thinking">
                       <div className="spinner"></div>
-                      <span>Calling tool: {toolCall.name}...</span>
+                      <span>Action: {toolCall.name}...</span>
                     </div>
                   )}
                 </div>

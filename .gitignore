@@ -7,5 +7,7 @@ __pycache__/
 PRODUCT.md
 DESIGN.md
 AGENTS.md
-skills-lock.json
 CLAUDE.md
+skills-lock.json
+agent_from_scratch/backend/main.py
+agent_from_scratch/backend/test.py
