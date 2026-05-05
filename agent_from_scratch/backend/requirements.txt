@@ -9,3 +9,7 @@ requests-cache
 retry-requests 
 numpy 
 pandas
+python-multipart
+python-docx
+pypdf
+pillow

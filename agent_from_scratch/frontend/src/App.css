@@ -360,6 +360,59 @@ body {
   background-color: var(--bg-color);
   position: sticky;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background-color: var(--user-bubble);
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-color);
+  width: fit-content;
+  animation: message-in 0.2s ease-out;
+}
+
+.remove-file {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  margin-left: 0.25rem;
+}
+
+.remove-file:hover {
+  color: var(--text-color);
+}
+
+.attach-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.attach-button:hover {
+  color: var(--text-color);
+}
+
+.attach-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .input-wrapper {
@@ -419,13 +472,16 @@ input {
   letter-spacing: 0.05em;
 }
 
-.spinner {
-  width: 0.75rem;
-  height: 0.75rem;
-  border: 1.5px solid var(--text-secondary);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+.file-preview.error {
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.spinner.sm {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-width: 1px;
 }
 
 @keyframes spin {

@@ -10,16 +10,28 @@ import traceback
 import json
 import asyncio
 import threading
+import shutil
+import os
+from pathlib import Path
+from fastapi import FastAPI, File, UploadFile
 from queue import Queue
 
 load_dotenv()
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 SYSTEM_PROMPT = """You are an automated problem-solving AI assistant (Agent). Your task is to assist users by providing accurate information. You are equipped with tools and MUST DEFAULT TO USING THEM when necessary. Do not guess or hallucinate answers.
 
 ### CORE RULES:
 1. Math & Calculation: ABSOLUTELY DO NOT perform mental math for any arithmetic operations (+, -, *, /). You must always use the `calculate` tool for any numbers.
 2. Weather: Do not fabricate temperatures or weather conditions. You must use the `get_weather` tool to retrieve real-time data for specific locations.
-3. Multi-step Reasoning: If a user's request requires multiple steps, call the tools sequentially. Use the result from the first tool as the input for the next tool.
+3. File System Awareness:
+   - You have access to a local file system located at `./backend/uploads/`.
+   - When a user's prompt contains a `[Attached File: filename.ext]` marker, it means a new file has been placed in that directory.
+   - You MUST use the `process_file` tool to read the content of these files before answering.
+   - If you are unsure what files are available, use the `list_files` tool.
+4. Multi-step Reasoning: If a user's request requires multiple steps, call the tools sequentially. Use the result from the first tool as the input for the next tool.
 4. City Name Extraction: When users mention cities, extract and normalize the name:
    - Common abbreviations: HCM/Saigon → Ho Chi Minh, HN → Hanoi, DN → Da Nang
    - If the city name is ambiguous or unclear, make your best guess based on context
@@ -132,6 +144,22 @@ def serialize_single_content(content):
         "parts": parts
     }
     
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        file_path = UPLOAD_DIR / file.filename
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        return {
+            "filename": file.filename,
+            "path": str(file_path),
+            "status": "success"
+        }
+    except Exception as e:
+        return {"error": str(e), "status": "failed"}
+
 
 @app.get("/api/tools")
 async def list_tools():

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, create_model
 from .calculator import calculator
 from .weather import get_weather_by_city
+from .file_processor import process_file, ProcessFileInput, list_files, ListFilesInput
 
 
 def register_tools(agent):
@@ -39,4 +40,10 @@ def register_tools(agent):
         If the user gives an abbreviation or nickname, expand it to the full city name.
         """
         return get_weather_by_city(location)
+
+    # Tool 3: File Processor
+    agent.toolCall(args_schema=ProcessFileInput)(process_file)
+
+    # Tool 4: List Files
+    agent.toolCall(args_schema=ListFilesInput)(list_files)
     

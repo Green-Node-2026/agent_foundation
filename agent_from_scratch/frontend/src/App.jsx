@@ -1,6 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Cpu, Terminal, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Bot, Cpu, Terminal, Calculator, ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import oneDark from 'react-syntax-highlighter/dist/esm/styles/prism/one-dark';
+import oneLight from 'react-syntax-highlighter/dist/esm/styles/prism/one-light';
+import 'katex/dist/katex.min.css';
 import './App.css';
 
 const TraceBlock = ({ toolCall, toolResponse }) => {
@@ -38,7 +45,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [availableTools, setAvailableTools] = useState([]);
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     // Fetch available tools on mount
@@ -60,13 +70,55 @@ function App() {
     localStorage.removeItem('agent_chat_history');
   };
 
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setAttachedFile({ name: file.name, status: 'uploading' });
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setAttachedFile({
+          name: file.name,
+          serverName: data.filename,
+          path: data.path,
+          status: 'success'
+        });
+      } else {
+        throw new Error(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      setAttachedFile({ name: file.name, status: 'error' });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeFile = () => {
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !attachedFile) || isLoading || isUploading) return;
+
+    let uploadedFileName = attachedFile?.status === 'success' ? attachedFile.serverName : '';
 
     const userMessage = {
       role: 'user',
-      parts: [{ text: input }]
+      parts: [{ text: input + (uploadedFileName ? `\n\n[Attached File: ${uploadedFileName}]` : '') }]
     };
     
     // Optimistically update messages
@@ -75,6 +127,8 @@ function App() {
     
     const currentInput = input;
     setInput('');
+    setAttachedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setIsLoading(true);
     setStatus('Thinking...');
 
@@ -179,7 +233,36 @@ function App() {
                 <div key={i} className={`message ${msg.role === 'user' ? 'user' : 'agent'}`}>
                   {textPart && (
                     <div className="bubble">
-                      {msg.role === 'user' ? textPart : <ReactMarkdown>{textPart}</ReactMarkdown>}
+                      {msg.role === 'user' ? (
+                        textPart
+                      ) : (
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          components={{
+                            code({node, inline, className, children, ...props}) {
+                              const match = /language-(\w+)/.exec(className || '')
+                              const language = match ? match[1] : ''
+                              return !inline && language ? (
+                                <SyntaxHighlighter
+                                  key={Math.random()}
+                                  children={String(children).replace(/\n$/, '')}
+                                  style={oneDark}
+                                  language={language}
+                                  PreTag="div"
+                                  {...props}
+                                />
+                              ) : (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              )
+                            }
+                          }}
+                        >
+                          {textPart}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   )}
                   {toolCall && !textPart && isLastMessage && isLoading && (
@@ -204,15 +287,44 @@ function App() {
         </div>
 
         <div className="input-container">
+          {attachedFile && (
+            <div className={`file-preview ${attachedFile.status}`}>
+              {attachedFile.status === 'uploading' ? (
+                <div className="spinner sm"></div>
+              ) : (
+                <Paperclip size={14} />
+              )}
+              <span>{attachedFile.name}</span>
+              {attachedFile.status !== 'uploading' && (
+                <button onClick={removeFile} className="remove-file">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="input-wrapper">
             <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
+            <button 
+              type="button" 
+              className="attach-button" 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isUploading}
+            >
+              <Paperclip size={20} />
+            </button>
+            <input
               type="text"
-              placeholder="Describe a task..."
+              placeholder={isUploading ? "Uploading file..." : "Describe a task..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={isLoading}
             />
-            <button type="submit" className="send-button" disabled={isLoading || !input.trim()}>
+            <button type="submit" className="send-button" disabled={isLoading || isUploading || (!input.trim() && !attachedFile)}>
               <Send size={20} />
             </button>
           </form>
