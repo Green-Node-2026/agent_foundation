@@ -45,17 +45,23 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [availableTools, setAvailableTools] = useState([]);
+  const [dailyUsage, setDailyUsage] = useState({ total_tokens: 0, total_cost: 0 });
   const [attachedFile, setAttachedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    // Fetch available tools on mount
+    // Fetch available tools and usage on mount
     fetch('http://127.0.0.1:5000/api/tools')
       .then(res => res.json())
       .then(data => setAvailableTools(data.tools || []))
       .catch(err => console.error('Failed to fetch tools:', err));
+
+    fetch('http://127.0.0.1:5000/api/usage')
+      .then(res => res.json())
+      .then(data => setDailyUsage(data))
+      .catch(err => console.error('Failed to fetch usage:', err));
   }, []);
 
   useEffect(() => {
@@ -115,17 +121,17 @@ function App() {
     if ((!input.trim() && !attachedFile) || isLoading || isUploading) return;
 
     let uploadedFileName = attachedFile?.status === 'success' ? attachedFile.serverName : '';
+    const finalPrompt = input + (uploadedFileName ? `\n\n[Attached File: ${uploadedFileName}]` : '');
 
     const userMessage = {
       role: 'user',
-      parts: [{ text: input + (uploadedFileName ? `\n\n[Attached File: ${uploadedFileName}]` : '') }]
+      parts: [{ text: finalPrompt }]
     };
     
     // Optimistically update messages
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     
-    const currentInput = input;
     setInput('');
     setAttachedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -137,7 +143,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          prompt: currentInput,
+          prompt: finalPrompt,
           history: messages
         }),
       });
@@ -146,18 +152,21 @@ function App() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep the partial line in buffer
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(trimmed.slice(6));
 
               if (data.type === 'tool_call') {
                 setStatus(`Action: ${data.name}...`);
@@ -166,8 +175,19 @@ function App() {
               } else if (data.type === 'model') {
                 setStatus('Finalizing...');
               } else if (data.type === 'done') {
-                setMessages(data.history);
+                const history = data.history || [];
+                // Attach usage to the last message (the agent's final response)
+                if (data.usage && history.length > 0) {
+                  history[history.length - 1].usage = data.usage;
+                }
+                setMessages(history);
                 setStatus('');
+
+                // Refresh daily quota from the canonical endpoint
+                fetch('http://127.0.0.1:5000/api/usage')
+                  .then(r => r.json())
+                  .then(setDailyUsage)
+                  .catch(err => console.error('usage refresh failed:', err));
               } else if (data.type === 'error') {
                 setMessages(prev => [...prev, { role: 'system', parts: [{ text: `Error: ${data.error}` }] }]);
                 setStatus('');
@@ -197,6 +217,31 @@ function App() {
         <div className="nav-content">
           <div className="nav-item active">Current Session</div>
           <div className="nav-placeholder">History Coming Soon</div>
+        </div>
+        
+        <div className="logs-separator"></div>
+
+        <div className="nav-header">
+          <Cpu size={16} />
+          <span>Quota</span>
+        </div>
+        <div className="nav-content usage-sidebar">
+          <div className="usage-item">
+            <span className="usage-label">Prompt</span>
+            <span className="usage-value">{dailyUsage.prompt_tokens?.toLocaleString() || 0}</span>
+          </div>
+          <div className="usage-item">
+            <span className="usage-label">Completion</span>
+            <span className="usage-value">{dailyUsage.completion_tokens?.toLocaleString() || 0}</span>
+          </div>
+          <div className="usage-item">
+            <span className="usage-label">Requests</span>
+            <span className="usage-value">{dailyUsage.requests || 0}</span>
+          </div>
+          <div className="usage-item">
+            <span className="usage-label">Total Tokens</span>
+            <span className="usage-value">{dailyUsage.total_tokens?.toLocaleString() || 0}</span>
+          </div>
         </div>
       </nav>
 
@@ -228,6 +273,7 @@ function App() {
               if (!textPart && !toolCall) return null;
 
               const isLastMessage = i === messages.length - 1;
+              const isAgent = msg.role === 'assistant';
 
               return (
                 <div key={i} className={`message ${msg.role === 'user' ? 'user' : 'agent'}`}>
@@ -245,7 +291,6 @@ function App() {
                               const language = match ? match[1] : ''
                               return !inline && language ? (
                                 <SyntaxHighlighter
-                                  key={Math.random()}
                                   children={String(children).replace(/\n$/, '')}
                                   style={oneDark}
                                   language={language}
@@ -262,6 +307,11 @@ function App() {
                         >
                           {textPart}
                         </ReactMarkdown>
+                      )}
+                      {isAgent && msg.usage && (
+                        <div className="message-usage">
+                          {msg.usage.total_tokens} tokens
+                        </div>
                       )}
                     </div>
                   )}

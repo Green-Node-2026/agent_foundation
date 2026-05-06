@@ -1,19 +1,22 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from llm_wrapper import LLMWrapper
+from llm_wrapper import LLMWrapper, TokenUsage
 from agent import Agent
 from tools.registry import register_tools
+from db import SessionStore, SessionNotFound
 import traceback
 import json
 import asyncio
 import threading
 import shutil
 import os
+from collections import defaultdict
+from datetime import date
 from pathlib import Path
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Header
 from queue import Queue
 
 load_dotenv()
@@ -85,6 +88,61 @@ client = LLMWrapper()
 agent = Agent(system_prompt=SYSTEM_PROMPT, client=client)
 register_tools(agent)
 
+
+class UsageTracker:
+    def __init__(self):
+        self._data: dict[tuple[str, str], dict[str, int]] = defaultdict(
+            lambda: {"prompt_tokens": 0, "completion_tokens": 0, "requests": 0}
+        )
+
+    def record(self, user_id: str, usage: TokenUsage | None) -> None:
+        if usage is None:
+            return
+        key = (user_id, date.today().isoformat())
+        bucket = self._data[key]
+        bucket["prompt_tokens"] += usage.prompt_tokens
+        bucket["completion_tokens"] += usage.completion_tokens
+        bucket["requests"] += 1
+
+    def today(self, user_id: str) -> dict:
+        today = date.today().isoformat()
+        bucket = self._data[(user_id, today)]
+        return {
+            "user_id": user_id,
+            "date": today,
+            "prompt_tokens": bucket["prompt_tokens"],
+            "completion_tokens": bucket["completion_tokens"],
+            "total_tokens": bucket["prompt_tokens"] + bucket["completion_tokens"],
+            "requests": bucket["requests"],
+        }
+
+
+usage_tracker = UsageTracker()
+
+
+try:
+    session_store: SessionStore | None = SessionStore()
+    print("[sessions] Redis connected")
+except Exception as e:
+    session_store = None
+    print(f"[sessions] disabled: {e}")
+
+
+def require_sessions() -> SessionStore:
+    if session_store is None:
+        raise HTTPException(status_code=503, detail="Session storage unavailable")
+    return session_store
+
+
+def serialize_usage(usage: TokenUsage | None) -> dict | None:
+    if usage is None:
+        return None
+    return {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+    }
+
 app = FastAPI()
 
 app.add_middleware(
@@ -99,6 +157,15 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     history: list[dict] | None = None
+
+
+class SessionCreateRequest(BaseModel):
+    title: str = ""
+
+
+class SessionUpdateRequest(BaseModel):
+    messages: list[dict]
+    title: str | None = None
 
 
 def parse_part(content):
@@ -174,11 +241,85 @@ async def list_tools():
     return {"tools": tools}
 
 
+@app.get("/api/usage")
+async def get_usage(x_user_id: str = Header(default="anonymous")):
+    return usage_tracker.today(x_user_id)
+
+
+@app.get("/api/sessions/health")
+async def sessions_health():
+    if session_store is None:
+        return {"ok": False, "reason": "not configured"}
+    return {"ok": session_store.health_check()}
+
+
+@app.post("/api/sessions")
+async def create_session(
+    body: SessionCreateRequest,
+    x_user_id: str = Header(default="anonymous"),
+):
+    return require_sessions().create(x_user_id, title=body.title)
+
+
+@app.get("/api/sessions")
+async def list_sessions(x_user_id: str = Header(default="anonymous")):
+    return {"sessions": require_sessions().list_for_user(x_user_id)}
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(
+    session_id: str,
+    x_user_id: str = Header(default="anonymous"),
+):
+    store = require_sessions()
+    try:
+        record = store.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if record["user_id"] != x_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return record
+
+
+@app.patch("/api/sessions/{session_id}")
+async def update_session(
+    session_id: str,
+    body: SessionUpdateRequest,
+    x_user_id: str = Header(default="anonymous"),
+):
+    store = require_sessions()
+    try:
+        record = store.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if record["user_id"] != x_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return store.update_messages(session_id, body.messages, title=body.title)
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    x_user_id: str = Header(default="anonymous"),
+):
+    store = require_sessions()
+    try:
+        record = store.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if record["user_id"] != x_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    store.delete(session_id)
+    return {"deleted": True}
+
+
 @app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(
+    request: ChatRequest,
+    x_user_id: str = Header(default="anonymous"),
+):
     async def generate():
         try:
-            # Run agent and iterate over yielded events
             for event in agent.run(
                 prompt=request.prompt,
                 history=request.history,
@@ -189,7 +330,14 @@ async def chat_stream(request: ChatRequest):
                     if serialized:
                         yield f"data: {json.dumps({'type': 'model', 'content': serialized})}\n\n"
                 elif event['type'] == 'done':
-                    yield f"data: {json.dumps({'type': 'done', 'history': serialize_content(event['history'])})}\n\n"
+                    turn_usage = event.get('usage')
+                    usage_tracker.record(x_user_id, turn_usage)
+                    payload = {
+                        'type': 'done',
+                        'history': serialize_content(event['history']),
+                        'usage': serialize_usage(turn_usage), 
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
                 else:
                     yield f"data: {json.dumps(event)}\n\n"
 
@@ -201,15 +349,25 @@ async def chat_stream(request: ChatRequest):
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    x_user_id: str = Header(default="anonymous"),
+):
     try:
-        # Exhaust generator to get final history
         final_history = []
+        turn_usage = None
         for event in agent.run(prompt=request.prompt, history=request.history, max_steps=2):
             if event['type'] == 'done':
                 final_history = event['history']
-        
-        return {"history": serialize_content(final_history)}
+                turn_usage = event.get('usage')
+
+        usage_tracker.record(x_user_id, turn_usage)
+
+        return {
+            "history": serialize_content(final_history),
+            "usage": serialize_usage(turn_usage),
+            "daily_usage": usage_tracker.today(x_user_id),
+        }
     except Exception as e:
         traceback.print_exc()
         return {"error": str(e)}

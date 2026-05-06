@@ -1,5 +1,6 @@
-from typing import Callable, Any 
+from typing import Callable, Any
 from pydantic import BaseModel, Field
+from llm_wrapper import TokenUsage
 
 class Agent:
     def __init__(self, system_prompt: str, client: Any, model: str = "gpt-4o"):
@@ -34,6 +35,7 @@ class Agent:
 
     def run(self, prompt: str, history: list[dict] | None = None, max_steps: int = 5):
         contents = []
+        turn_usage = TokenUsage()
 
         # Add system prompt
         if self.system_prompt:
@@ -58,12 +60,17 @@ class Agent:
 
             contents.append(response.content)
 
-            # Yield model response
+            if response.usage is not None:
+                turn_usage.prompt_tokens += response.usage.prompt_tokens
+                turn_usage.completion_tokens += response.usage.completion_tokens
+                turn_usage.total_tokens += response.usage.total_tokens
+
+            # Yield model response (no usage here — emitted once at 'done')
             yield {'type': 'model', 'content': response.content}
 
             function_calls = response.function_calls
             if not function_calls:
-                yield {'type': 'done', 'history': contents}
+                yield {'type': 'done', 'history': contents, 'usage': turn_usage}
                 return
 
             tool_response_parts = []
@@ -96,4 +103,4 @@ class Agent:
                 self.client.create_tool_response_content(tool_response_parts)
             )
 
-        yield {'type': 'done', 'history': contents}
+        yield {'type': 'done', 'history': contents, 'usage': turn_usage}

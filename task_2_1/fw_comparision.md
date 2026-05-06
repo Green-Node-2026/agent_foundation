@@ -15,45 +15,27 @@
 # Đề xuất Framework 
 ---
 
-## 1. Nếu ưu tiên tính ổn định doanh nghiệp và quy trình phức tạp
+- Qua quá trình nghiên cứu và so sánh các framework điều phối Agent, em đã rút ra một số đề xuất cốt lõi cho từng
+    hướng tiếp cận như sau:
 
-**Lựa chọn:** LangGraph  
+## 1. Nếu ưu tiên tính ổn định, quy trình phức tạp và chất lượng Code
+- Lựa chọn: LangGraph kết hợp Pydantic AI
+- Lý do: Em nhận thấy đây là "cặp bài trùng" hoàn hảo cho các hệ thống production cần độ tin cậy cao. LangGraph giúp
+    em kiểm soát tuyệt đối luồng trạng thái (State Management) thông qua sơ đồ Graph minh bạch và hỗ trợ
+    Human-in-the-loop cực tốt. Khi em kết hợp thêm Pydantic AI để tận dụng khả năng validate dữ liệu (Type-safe) chặt
+    chẽ cho LLM, hệ thống sẽ giảm thiểu tối đa lỗi runtime, giúp code sạch và dễ bảo trì hơn rất nhiều.
 
-**Lý do:**  
-Khả năng kiểm soát trạng thái tuyệt đối và hỗ trợ Human-in-the-loop tốt nhất hiện nay giúp đảm bảo tính an toàn cho các ứng dụng tài chính hoặc y tế.
-
----
-
-## 2. Nếu team sử dụng .NET hoặc cần triển khai phân tán trong Azure
-
-**Lựa chọn:** Microsoft Agent Framework  
-
-**Lý do:**  
-Sự kết hợp giữa Semantic Kernel và AutoGen mang lại sự ổn định kiểu (Type safety) và khả năng mở rộng quy mô lớn cho các hệ thống phân tán.
-
----
-
-## 3. Nếu cần bản demo hoạt động trong vài ngày (Fast Prototyping)
-
-**Lựa chọn:** CrewAI  
-
-**Lý do:**  
-Bạn có thể định nghĩa các tác nhân bằng ngôn ngữ tự nhiên và có ngay một đội ngũ cộng tác mà không cần lo lắng về hạ tầng phức tạp ban đầu.
+## 2. Nếu bài toán tập trung sâu vào dữ liệu (Advanced RAG & Knowledge Assistant)
+- Lựa chọn: LlamaIndex Workflows
+- Lý do: Đối với các hệ thống cần xử lý khối lượng tài liệu khổng lồ của doanh nghiệp, em đánh giá LlamaIndex là
+    không có đối thủ.
+    - Em đặc biệt ấn tượng với cơ chế Event-driven (hướng sự kiện), cho phép xây dựng các luồng xử lý không đồng bộ
+        (async flow) cực kỳ linh hoạt.
+    - Khả năng xử lý song song (Parallel execution) giúp tăng tốc độ truy xuất dữ liệu từ nhiều nguồn (Vector DB,
+        SQL, API) cùng lúc.
+    - Hệ thống còn tích hợp sẵn khả năng quan sát (Observability) và đánh giá (Evaluation) chuyên sâu cho RAG, giúp
+        em kiểm soát được độ chính xác của câu trả lời dựa trên dữ liệu thực tế thay vì chỉ dựa vào suy luận của model.
 
 ---
 
-## 4. Nếu team chú trọng Code Quality và sử dụng Python làm chủ đạo
-
-**Lựa chọn:** PydanticAI  
-
-**Lý do:**  
-Tận dụng tối đa sức mạnh của Python type hints, giúp giảm thiểu lỗi runtime và tăng tốc độ phát triển nhờ hỗ trợ tốt từ IDE.
-
----
-
-## 5. Nếu bài toán tập trung vào tra cứu dữ liệu (Advanced RAG)
-
-**Lựa chọn:** LlamaIndex Workflows  
-
-**Lý do:**  
-Khả năng xử lý tài liệu doanh nghiệp và tích hợp sâu với các vector database là không đối thủ trong phân khúc này.
+![Alt text](LangGraph_Orchestrator.png)

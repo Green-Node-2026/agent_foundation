@@ -9,10 +9,18 @@ from google.genai import types
 
 
 @dataclass
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
 class LLMResponse:
     content: Any
     function_calls: list[Any]
     text: str
+    usage: TokenUsage | None = None
 
 
 @dataclass
@@ -203,10 +211,20 @@ class OpenAIProvider(LLMProvider):
             for function_call in function_calls
         ]
 
+        usage = None
+        raw_usage = getattr(response, "usage", None)
+        if raw_usage is not None:
+            usage = TokenUsage(
+                prompt_tokens=getattr(raw_usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(raw_usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(raw_usage, "total_tokens", 0) or 0,
+            )
+
         return LLMResponse(
             content=SimpleContent(role="assistant", parts=parts),
             function_calls=function_calls,
             text="\n".join(text_parts),
+            usage=usage,
         )
 
     def reconstruct_content(self, data: dict) -> SimpleContent:
