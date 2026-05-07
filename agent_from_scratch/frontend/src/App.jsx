@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Cpu, Terminal, Calculator, ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, Cpu, Terminal, Calculator, ChevronDown, ChevronUp, Paperclip, X, Plus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -36,11 +36,22 @@ const TraceBlock = ({ toolCall, toolResponse }) => {
   );
 };
 
+const API_BASE = 'http://127.0.0.1:5000';
+
+function getOrCreateUserId() {
+  let id = localStorage.getItem('agent_user_id');
+  if (!id) {
+    id = (crypto?.randomUUID && crypto.randomUUID()) || `u_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem('agent_user_id', id);
+  }
+  return id;
+}
+
 function App() {
-  const [messages, setMessages] = useState(() => {
-    const saved = localStorage.getItem('agent_chat_history');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [userId] = useState(getOrCreateUserId);
+  const [messages, setMessages] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -51,30 +62,88 @@ function App() {
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  const apiHeaders = useCallback((sessionId = null) => {
+    const h = { 'X-User-Id': userId };
+    if (sessionId) h['X-Session-Id'] = sessionId;
+    return h;
+  }, [userId]);
+
+  const refreshSessions = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/sessions`, { headers: apiHeaders() });
+    const data = await res.json();
+    const list = data.sessions || [];
+    setSessions(list);
+    return list;
+  }, [apiHeaders]);
+
+  const switchToSession = useCallback(async (sessionId) => {
+    const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { headers: apiHeaders() });
+    if (!res.ok) {
+      console.error('Failed to load session', sessionId);
+      return;
+    }
+    const record = await res.json();
+    setMessages(record.messages || []);
+    setCurrentSessionId(sessionId);
+  }, [apiHeaders]);
+
+  const startNewSession = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+      body: JSON.stringify({ title: '' }),
+    });
+    const record = await res.json();
+    setMessages([]);
+    setCurrentSessionId(record.session_id);
+    await refreshSessions();
+  }, [apiHeaders, refreshSessions]);
+
+  const removeSession = useCallback(async (sessionId) => {
+    await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: apiHeaders(),
+    });
+    const remaining = await refreshSessions();
+    if (sessionId === currentSessionId) {
+      if (remaining.length > 0) {
+        await switchToSession(remaining[0].session_id);
+      } else {
+        await startNewSession();
+      }
+    }
+  }, [apiHeaders, currentSessionId, refreshSessions, switchToSession, startNewSession]);
+
   useEffect(() => {
-    // Fetch available tools and usage on mount
-    fetch('http://127.0.0.1:5000/api/tools')
+    fetch(`${API_BASE}/api/tools`)
       .then(res => res.json())
       .then(data => setAvailableTools(data.tools || []))
       .catch(err => console.error('Failed to fetch tools:', err));
 
-    fetch('http://127.0.0.1:5000/api/usage')
+    fetch(`${API_BASE}/api/usage`, { headers: { 'X-User-Id': userId } })
       .then(res => res.json())
-      .then(data => setDailyUsage(data))
+      .then(setDailyUsage)
       .catch(err => console.error('Failed to fetch usage:', err));
-  }, []);
+
+    (async () => {
+      try {
+        const list = await refreshSessions();
+        if (list.length > 0) {
+          await switchToSession(list[0].session_id);
+        } else {
+          await startNewSession();
+        }
+      } catch (err) {
+        console.error('Failed to bootstrap sessions:', err);
+      }
+    })();
+  }, [userId, refreshSessions, switchToSession, startNewSession]);
 
   useEffect(() => {
-    localStorage.setItem('agent_chat_history', JSON.stringify(messages));
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading, status]);
-
-  const clearHistory = () => {
-    setMessages([]);
-    localStorage.removeItem('agent_chat_history');
-  };
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -87,7 +156,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/upload', {
+      const response = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -119,6 +188,7 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if ((!input.trim() && !attachedFile) || isLoading || isUploading) return;
+    if (!currentSessionId) return;
 
     let uploadedFileName = attachedFile?.status === 'success' ? attachedFile.serverName : '';
     const finalPrompt = input + (uploadedFileName ? `\n\n[Attached File: ${uploadedFileName}]` : '');
@@ -127,11 +197,9 @@ function App() {
       role: 'user',
       parts: [{ text: finalPrompt }]
     };
-    
-    // Optimistically update messages
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    
+
+    setMessages([...messages, userMessage]);
+
     setInput('');
     setAttachedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -139,13 +207,10 @@ function App() {
     setStatus('Thinking...');
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/chat/stream', {
+      const response = await fetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          prompt: finalPrompt,
-          history: messages
-        }),
+        headers: { 'Content-Type': 'application/json', ...apiHeaders(currentSessionId) },
+        body: JSON.stringify({ prompt: finalPrompt }),
       });
 
       if (!response.body) throw new Error('No response body');
@@ -176,18 +241,18 @@ function App() {
                 setStatus('Finalizing...');
               } else if (data.type === 'done') {
                 const history = data.history || [];
-                // Attach usage to the last message (the agent's final response)
                 if (data.usage && history.length > 0) {
                   history[history.length - 1].usage = data.usage;
                 }
                 setMessages(history);
                 setStatus('');
 
-                // Refresh daily quota from the canonical endpoint
-                fetch('http://127.0.0.1:5000/api/usage')
+                fetch(`${API_BASE}/api/usage`, { headers: { 'X-User-Id': userId } })
                   .then(r => r.json())
                   .then(setDailyUsage)
                   .catch(err => console.error('usage refresh failed:', err));
+
+                refreshSessions().catch(err => console.error('sessions refresh failed:', err));
               } else if (data.type === 'error') {
                 setMessages(prev => [...prev, { role: 'system', parts: [{ text: `Error: ${data.error}` }] }]);
                 setStatus('');
@@ -215,8 +280,32 @@ function App() {
           <span>Sessions</span>
         </div>
         <div className="nav-content">
-          <div className="nav-item active">Current Session</div>
-          <div className="nav-placeholder">History Coming Soon</div>
+          <button onClick={startNewSession} className="new-chat-btn" disabled={isLoading}>
+            <Plus size={14} />
+            <span>New Chat</span>
+          </button>
+          <div className="sessions-list">
+            {sessions.map(s => (
+              <div
+                key={s.session_id}
+                className={`session-item ${s.session_id === currentSessionId ? 'active' : ''}`}
+                onClick={() => !isLoading && switchToSession(s.session_id)}
+              >
+                <span className="session-title">{s.title || 'Untitled'}</span>
+                <button
+                  type="button"
+                  className="session-delete"
+                  onClick={(e) => { e.stopPropagation(); removeSession(s.session_id); }}
+                  aria-label="Delete session"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            {sessions.length === 0 && (
+              <div className="nav-placeholder">No sessions yet</div>
+            )}
+          </div>
         </div>
         
         <div className="logs-separator"></div>
@@ -248,9 +337,6 @@ function App() {
       <div className="chat-section">
         <header className="app-header">
           <h1 className="app-title">Agent</h1>
-          <button onClick={clearHistory} className="clear-btn">
-            Clear
-          </button>
         </header>
 
         <div className="chat-container" ref={scrollRef}>

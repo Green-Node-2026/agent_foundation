@@ -313,16 +313,76 @@ async def delete_session(
     return {"deleted": True}
 
 
+def _resolve_session_history(
+    x_user_id: str,
+    x_session_id: str | None,
+    request_history: list[dict] | None,
+) -> tuple[list[dict] | None, str | None]:
+    """If X-Session-Id is provided, load that session's stored messages and use them
+    as history (ignoring whatever the client sent in the request body). Returns
+    (history, session_id_to_save_to). When no session id is provided, falls back to
+    the stateless flow."""
+    if not x_session_id:
+        return request_history, None
+
+    store = require_sessions()
+    try:
+        record = store.get(x_session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if record["user_id"] != x_user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return record["messages"], x_session_id
+
+
+def _derive_title_from_history(messages: list[dict]) -> str | None:
+    """First user message text → session title. Strips file-attachment markers."""
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        for p in (m.get("parts") or []):
+            if not isinstance(p, dict):
+                continue
+            text = p.get("text")
+            if not text:
+                continue
+            cleaned = text.split("[Attached File:")[0].strip()
+            if cleaned:
+                return cleaned[:50]
+    return None
+
+
+def _persist_session_history(session_id: str, serialized_history: list[dict]) -> None:
+    # System prompt is reattached fresh every turn — don't store it.
+    persistable = [m for m in serialized_history if m.get("role") != "system"]
+
+    title = None
+    try:
+        existing = session_store.get(session_id)
+        if not existing.get("title"):
+            title = _derive_title_from_history(persistable)
+    except SessionNotFound:
+        return  # session deleted mid-turn
+
+    session_store.update_messages(session_id, persistable, title=title)
+
+
 @app.post("/api/chat/stream")
 async def chat_stream(
     request: ChatRequest,
     x_user_id: str = Header(default="anonymous"),
+    x_session_id: str | None = Header(default=None),
 ):
+    history, save_to_session = _resolve_session_history(
+        x_user_id, x_session_id, request.history
+    )
+
     async def generate():
         try:
             for event in agent.run(
                 prompt=request.prompt,
-                history=request.history,
+                history=history,
                 max_steps=5
             ):
                 if event['type'] == 'model':
@@ -332,10 +392,16 @@ async def chat_stream(
                 elif event['type'] == 'done':
                     turn_usage = event.get('usage')
                     usage_tracker.record(x_user_id, turn_usage)
+                    serialized_history = serialize_content(event['history'])
+
+                    if save_to_session:
+                        _persist_session_history(save_to_session, serialized_history)
+
                     payload = {
                         'type': 'done',
-                        'history': serialize_content(event['history']),
-                        'usage': serialize_usage(turn_usage), 
+                        'history': serialized_history,
+                        'usage': serialize_usage(turn_usage),
+                        'session_id': save_to_session,
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
                 else:
@@ -352,21 +418,31 @@ async def chat_stream(
 async def chat(
     request: ChatRequest,
     x_user_id: str = Header(default="anonymous"),
+    x_session_id: str | None = Header(default=None),
 ):
+    history, save_to_session = _resolve_session_history(
+        x_user_id, x_session_id, request.history
+    )
+
     try:
         final_history = []
         turn_usage = None
-        for event in agent.run(prompt=request.prompt, history=request.history, max_steps=2):
+        for event in agent.run(prompt=request.prompt, history=history, max_steps=2):
             if event['type'] == 'done':
                 final_history = event['history']
                 turn_usage = event.get('usage')
 
         usage_tracker.record(x_user_id, turn_usage)
+        serialized_history = serialize_content(final_history)
+
+        if save_to_session:
+            _persist_session_history(save_to_session, serialized_history)
 
         return {
-            "history": serialize_content(final_history),
+            "history": serialized_history,
             "usage": serialize_usage(turn_usage),
             "daily_usage": usage_tracker.today(x_user_id),
+            "session_id": save_to_session,
         }
     except Exception as e:
         traceback.print_exc()
